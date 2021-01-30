@@ -38,26 +38,22 @@ Conduct the following tests.
 
 ```{r creative t-test}
 
-#library(dplyr)
-#creative_tr <- kniht %>% filter(measure == 'creative' & treat == 1)
-#creative_untr <- kniht %>% filter(measure == 'creative' & treat == 0)
+library(dplyr)
 
-t_test_creative <- t.test(kniht[kniht$measure == 'creative' & kniht$treat == 1, ]$value, 
-                          kniht[kniht$measure == 'creative' & kniht$treat == 0, ]$value, 
-                          paired = TRUE, alternative = "greater")
+creative_tr <- kniht %>% filter(measure == 'creative' & treat == 1)
+creative_untr <- kniht %>% filter(measure == 'creative' & treat == 0)
+
+t_test_creative <- t.test(creative_tr$value, creative_untr$value, paired = TRUE, alternative = "greater")
 t_test_creative
 ```
 
 
 ```{r sweat t-test}
 
-#sweat_tr <- kniht %>% filter(measure == 'sweat' & treat == 1)
-#sweat_untr <- kniht %>% filter(measure == 'sweat' & treat == 0)
+sweat_tr <- kniht %>% filter(measure == 'sweat' & treat == 1)
+sweat_untr <- kniht %>% filter(measure == 'sweat' & treat == 0)
 
-t_test_sweat <- t.test(kniht[measure == 'sweat' & treat == 1, ]$value, 
-                          kniht[measure == 'sweat' & treat == 0, ]$value, 
-                          paired = TRUE, 
-                          alternative = "greater")
+t_test_sweat <- t.test(sweat_tr$value, sweat_untr$value, paired = TRUE, alternative = "greater")
 t_test_sweat
 ```
 
@@ -69,33 +65,38 @@ We want to run a paired samples t-test, since our samples include both placebo a
 # do your work, and then save your computed p-value in the object
 
 calcuate_measure_ate <- function(measure_var) {
-  t_effect <- 0
-  # I know this isn't the R way but after trying to be smart for a bit I gave up
-  for( p in unique(kniht$person) ) {
-    t_effect <- t_effect + (kniht[person == p & treat == 1 & measure == measure_var]$value - kniht[person == p & treat == 0 & measure == measure_var]$value)
+  people = unique(kniht$person)
+  t_effect = 0
+  for( p in people ) {
+    tmp <- kniht %>% filter(person == p & measure == measure_var)
+    t_effect <- t_effect + (tmp[treat == 1]$value - tmp[treat == 0]$value)
   }
-  return(t_effect/length(unique(kniht$person)))
+  return(t_effect/length(people))
+}
+
+random1 <- function() {
+  sample(c(rep(1, 3), rep(0, 3)))
+}
+
+creative_value_for_person <- function(p)
+{
+  tmp <- kniht %>% filter(person == p & measure == "creative")
+  return(tmp[treat == 1]$value - tmp[treat == 0]$value)
 }
 
 creative_ate     <- calcuate_measure_ate("creative")
+creative_ri      <- function() {
+  
+  po_treated <- data.table(person = unique(kniht$person), treatment = random1())
+  po_treated_values <- lapply(unique(kniht$person), creative_value_for_person)
+  po_treated$value <- unlist(po_treated_values) # ah, the principle of most surprise
 
-#function to calculate the ATE for each randomization
-est_ate <- function(outcome, treat) { 
-  mean(outcome[treat==1]) - mean(outcome[treat==0])
+  t_effect = mean(po_treated[treatment == 1]$value) - mean(po_treated[treatment == 0]$value) 
+  return(t_effect)
+  
 }
 
-#1 study, 1 randomization
-sim_random_study <- function(input){
-  po_control <- input[,value]
-  po_treatment <- po_control # under sharp null treatment same as control
-  treatment <- random_q2(input)
-  outcomes <- po_treatment * treatment + po_control * (1 - treatment)
-  ate <- est_ate(outcomes, treatment)
-  return(ate)
-}
-
-creative_ri_distribution <- replicate(1000, sim_random_study(kniht[measure == 'creative',]))
-
+creative_ri_distribution <- replicate(1000, creative_ri())
 
 hist(creative_ri_distribution, main = "Histogram of Creative Results", breaks = 100)
 abline(v = creative_ate, col='red')
@@ -103,35 +104,39 @@ abline(v = creative_ate, col='red')
 creative_p_value <- mean(creative_ate < creative_ri_distribution)
 ```
 
-** So far but not so good for our creativity **
-
 ```{r sweat ri}
 # do your work, and then save your computed p-value in the object
 
-sweat_ate     <- calcuate_measure_ate("sweat")
-
-
-#1 study, 1 randomization
-sim_random_study <- function(input){
-  po_control <- input[,value]
-  po_treatment <- po_control # under sharp null treatment same as control
-  treatment <- random_q2(input)
-  outcomes <- po_treatment * treatment + po_control * (1 - treatment)
-  ate <- est_ate(outcomes, treatment)
-  return(ate)
+sweat_value_for_person <- function(p)
+{
+  tmp <- kniht %>% filter(person == p & measure == "sweat")
+  return(tmp[treat == 1]$value - tmp[treat == 0]$value)
 }
 
-sweat_ri_distribution <- replicate(1000, sim_random_study(kniht[measure == 'sweat',]))
+sweat_ate     <- calcuate_measure_ate('sweat')
+sweat_ri      <- function() {
+  
+  po_treated <- data.table(person = unique(kniht$person), treatment = random1())
+  po_treated_values <- lapply(unique(po_treated$person), sweat_value_for_person)
+  po_treated$value <- unlist(po_treated_values) # ah, the principle of most surprise
 
-hist(sweat_ri_distribution, main = "Histogram of Sweativity™ Results", breaks = 100)
+  t_effect = mean(po_treated[treatment == 1]$value) - mean(po_treated[treatment == 0]$value) 
+  return(t_effect)
+  
+}
+
+sweat_ri_distribution <- replicate(1000, sweat_ri())
+
+hist(sweat_ri_distribution, main = "Histogram of Creative Results", breaks = 100)
 abline(v = sweat_ate, col="red")
 
-sweat_p_value <-  mean(sweat_ate <= sweat_ri_distribution)
+# this seems wrong but I can't figure out why
+sweat_p_value <-  mean(which(sweat_ate < sweat_ri_distribution))
 ```
 
 **Esteemed Colleagues of Kniht,**
 
-**I have examined our results using the study data. If we have a hypothesis that  Kniht definitely raises users creativity and a null hypothesis that says that Kniht is completely ineffective at raising users creativity we should be able to test this by running a randomization inference test that looks at our data from both perspectives. This random inference tests how likely it is that our two results are the result of Kniht being a powerful stimulant to creativity. Unfortunately the p-value of our creativity test, that is, the likelihood that our results could be completely accidental, appears to be `r creative_p_value`. Slightly more convincing is the likelihood that Kniht does in fact cause some increase in sweatiness, as the p-value of that test is `r sweat_p_value`. We may want to run further and more detailed studies using more research subjects. Or we should cash out. In which case I would like a raise.**
+**I have examined our results using the study data. If we have a hypothesis that  Kniht definitely raises users creativity and a null hypothesis that says that Kniht is completely ineffective at raising users creativity we should be able to test this by running a random inference test that looks at our data from both perspectives. This random inference tests how likely it is that our two results are the result of Kniht being a powerful stimulant to creativity. Unfortunately the p-value of our creativity test, that is, the likelihood that our results could be completely accidental, appears to be `r creative_p_value`. Slightly more convincing is the likelihood that Kniht does in fact cause some increase in sweatiness, as the p-value of that test is `r sweat_p_value`. We may want to run further and more detailed studies using more research subjects. Or we should cash out. In which case I would like a raise.**
 
 3. Which of these tests are more appropriate to the task at hand, and why? Based on the tests that you have run, what do you conclude about the effectiveness of *kniht*? 
 

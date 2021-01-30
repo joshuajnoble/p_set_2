@@ -20,13 +20,16 @@ d <- fread("../data/clingingsmith_2009.csv")
 
 1. State the sharp-null hypothesis that you will be testing. 
 
-> Fill this in with your null. 
+> Our sharp null hypothesis would be that there is no difference between the beliefs of people selected to receive a visa for the Hajj.
 
 2. Using `data.table`, group the data by `success` and report whether views toward others are generally more positive among lottery winners or lottery non-winners. This answer should be of the form `d[ , .(mean_views = ...), keyby = ...]` where you have filled in the `...` with the appropriate functions and varaibles. 
 
 ```{r actual hajj ate}
-hajj_group_mean <- 'fill this in' # the result should be a data.table with two colums and two rows
-hajj_ate        <- 'fill this in' # from the `hajj_group_mean` produce a single, numeric vector that is the ate. check that it is numeric using `class(hajj_ate)`
+hajj_group_mean <- d[ , .(mean_views = mean(views)), keyby=.(success)] # the result should be a data.table with two colums and two rows
+hajj_ate        <- hajj_group_mean$mean_views[2] -  hajj_group_mean$mean_views[1] # from the `hajj_group_mean` produce a single, numeric vector that is the ate. check that it is numeric using `class(hajj_ate)`
+
+print(class(hajj_ate))
+
 ```
 
 But is this a "meaningful" difference? Or, could a difference of this size have arisen from an "unlucky" randomization? Conduct 10,000 simulated random assignments under the sharp null hypothesis to find out. (Don't just copy the code from the async, think about how to write this yourself.) 
@@ -36,26 +39,46 @@ But is this a "meaningful" difference? Or, could a difference of this size have 
 ## as a reminder, RI will randomly permute / assign the treatment variable
 ## and recompute the test-statistic (i.e. the mean difference) under each permutation
 
-hajj_ri_distribution <- 'fill this in' # this should be a numeric vector that has a length equal to the number of RI permutations you ran
+randomize_function <- function( input ){
+  return(sample(input[,success]))
+}
+
+ri_function <- function( input ) {
+  sim_control = input[,views]
+  sim_treatment = sim_control # we want to test under the sharp null
+  treatment <- randomize_function(input)
+  outcomes <- sim_treatment * treatment + sim_control * (1 - treatment)
+  ri_ate <- mean(outcomes[treatment==1]) - mean(outcomes[treatment==0])
+  return(ri_ate)
+}
+
+hajj_ri_distribution <- replicate(10000, ri_function(d)) # this should be a numeric vector that has a length equal to the number of RI permutations you ran
+
+hist(hajj_ri_distribution, main = "Histogram of Results", breaks = 100)
+abline(v = hajj_ate)
 ```
 
 3. How many of the simulated random assignments generate an estimated ATE that is at least as large as the actual estimate of the ATE? Conduct your work in the code chunk below, saving the results into `hajj_count_larger`, but also support your coding with a narrative description. In that narrative description (and throughout), use R's "inline code chunks" to write your answer consistent with each time your run your code.  
 
 ```{r hajj one-tailed count}
-hajj_count_larger <- 'fill this in' # length 1 numeric vector from comparison of `hajj_ate` and `hajj_ri_distribution`
+hajj_count_larger <- length(hajj_ri_distribution[hajj_ri_distribution > hajj_ate])   # length 1 numeric vector from comparison of `hajj_ate` and `hajj_ri_distribution`
 ```
+
+**We have an `r hajj_count_larger` where the values are larger.**
 
 4. If there are `hajj_count_larger` randomizations that are larger than `hajj_ate`, what is the implied *one-tailed* p-value? Both write the code in the following chunk, and include a narrative description of the result following your code.
 
 ```{r hajj one-tailed p-value}
-hajj_one_tailed_p_value <- 'fill this in' # length 1 numeric vector 
+hajj_one_tailed_p_value <- mean(hajj_ate <= hajj_ri_distribution) # length 1 numeric vector 
 
 ```
+
+**We have an implied p-value of `r hajj_one_tailed_p_value`.**
 
 5. Now, conduct a similar test, but for a two-sided p-value. You can either use two tests, one for larger than and another for smaller than; or, you can use an absolute value (`abs`). Both write the code in the following chunk, and include a narrative description of the result following your code. 
 
 ```{r hajj two-tailed p-value}
-hajj_two_tailed_p_value <- 'fill this in' # length 1 numeric vector 
+hajj_two_tailed_p_value <- mean(hajj_ate <= abs(hajj_ri_distribution)) # length 1 numeric vector 
 ```
  
-
+**We have an implied two-side p-value of `r hajj_two_tailed_p_value`.**

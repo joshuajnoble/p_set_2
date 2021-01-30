@@ -8,18 +8,42 @@ Imagine that you and David Reiley are going to revive the sports card experiment
 
 1. Describe a t-test based testing procedure that you might conduct for this experiment. What is your null hypothesis, and what would it take for you to reject this null hypothesis? (This second statement could either be in terms of p-values, or critical values.)
 
-> 
+**Our null hypothesis would be that treatment auction format does not produce lower bids than the control auction format. We'd probably want to conduct a one-tailed t-test since the hypothesis is just that the treatment auction format was theoretically predicted to produce lower bids than the control auction format, not that they're identical. We'd want to be able to see a p-value below 0.05.**
 
 2. Suppose that you are only able to recruit 10 people to be a part of your experiment -- 5 in treatment and another 5 in control. Simulate "re-conducting" the sports card experiment once by sampling from the data you previously collected, and conducting the test that you've written down in part 1 above. Given the results of this 10 person simulation, would your test reject the null hypothesis?
 
 ```{r ten person sample}
-t_test_ten_people <- 'fill this in' # this should be a test object
+
+# select 10, redone for minimal storing of filtered results
+# I don't want to make a new datatable here but culdn't figure out a better way to do it
+size_10 <- merge.data.table(filter(d, uniform_price_auction==1)[sample (nrow(d[uniform_price_auction==0,]), 5, replace=F),], 
+                            filter(d, uniform_price_auction==0)[sample (nrow(d[uniform_price_auction==1,]), 5, replace=F),], 
+                            all = TRUE)
+
+t_test_ten_people <- t.test(size_10[uniform_price_auction==1,]$bid,size_10[uniform_price_auction==0,]$bid, alternative= "less") # this should be a test object
 ```
+
+** The calculated p-value is `r t_test_ten_people` so our test would reject the null hypothesis**
 
 3. Now, repeat this process -- sampling 10 people from your existing data and conducting the appropriate test -- one-thousand times. Each time that you conduct this sample and test, pull the p-value from your t-test and store it in an object for later use. Consider whether your sampling process should sample with or without replacement.
 
 ```{r many ten person samples}
-t_test_p_values <- rep(NA, 1000) # fill this in with the p-values from your power analysis
+
+select_10 <- function() {
+  
+  # I don't want to make a new datatable here but culdn't figure out a better way to do it
+  size_10_ri <- merge.data.table(
+                            filter(d, uniform_price_auction==1)[sample (nrow(d[uniform_price_auction==0,]), 5, replace=F),], 
+                            filter(d, uniform_price_auction==0)[sample (nrow(d[uniform_price_auction==1,]), 5, replace=F),], 
+                            all = TRUE
+                            )
+  t_test_ten_people <- t.test(size_10_ri[uniform_price_auction==1,]$bid,size_10_ri[uniform_price_auction==0,]$bid, alternative= "less")
+  return(t_test_ten_people$p.value)
+}
+
+
+# Run 10000 trials on the distribution 
+t_test_p_values <- replicate(1000, select_10()) # numeric vector of length equal to your number of RI permutations
 
 ## you can either write a for loop, use an apply method, or use replicate (which is an easy-of-use wrapper to an apply method)
 ```
@@ -27,21 +51,64 @@ t_test_p_values <- rep(NA, 1000) # fill this in with the p-values from your powe
 4. Use `ggplot` and either `geom_hist()` or `geom_density()` to produce a distribution of your p-values, and describe what you see. What impression does this leave you with about the power of your test? 
 
 ```{r histogram of ten person samples}
+library(ggplot2)
+
+# Basic histogram
+p <- ggplot(data.table(pvals = t_test_p_values), aes(x=pvals)) + geom_histogram()
+p
 
 ```
 
+** Though our results are better than I expected, our p-values tend to be a little too high for any statistical significance. It's unlikely that we can get away with only having 10 members in our test. **
+
 5. Suppose that you and David were to actually run this experiment and design -- sample 10 people, conduct a t-test, and draw a conclusion. **And** suppose that when you get the data back, **lo and behold** it happens to reject the null hypothesis. Given the power that your design possesses, does the result seem reliable? Or, does it seem like it might be a false-positive result?
 
-> 
+** It would almost certainly be a false-positive result. Our experiment has some statistical power, but not enough.**
 
 6. Apply the decision rule that you wrote down in part 1 above to each of the simulations you have conducted. What proportion of your simulations have rejected your null hypothesis? This is the p-value that this design and testing procedure generates. After you write and execute your code, include a narrative sentence or two about what you see.  
 
 ```{r ten-person power}
-t_test_rejects <- 'fill this in'
+t_test_rejects <- length(which(t_test_p_values < 0.05))
 ```
+
+** Looks like we have `r t_test_rejects` where we can reject the null hypothesis. This is about 22% of our tests, not quite good enough.**
 
 7. Does buying more sample increase the power of your test? Apply the algorithm you have just written onto different sizes of data. Namely, conduct the exact same process that you have for 10 people, but now conduct the process for every 10% of recruitment size of the original data: Conduct a power analysis with a 10%, 20%, 30%, ... 200% sample of the original data. (You could be more granular if you like, perhaps running this task for every 1% of the data). 
 
 ```{r} 
-percentages_to_sample <- 'fill this in'
+
+
+select_n <- function(pct) {
+  
+  size <- round(nrow(d) * pct)
+  
+  # we need to do this with replacement now b/c we're asking for more than our dataset sometimes
+  # this merge is killing performance :/
+  sel_n <- merge.data.table(
+        filter(d, uniform_price_auction == 1)[sample(nrow(d[uniform_price_auction == 1,]), size, replace = T),], 
+        filter(d, uniform_price_auction == 0)[sample(nrow(d[uniform_price_auction == 0,]), size, replace = T),], 
+        all = TRUE
+        )
+  t_test_ten_people <- t.test(sel_n[uniform_price_auction == 1]$bid, sel_n[uniform_price_auction == 0]$bid, alternative = "less")
+  return(t_test_ten_people$p.value)
+}
+
+
+sim_n <- function(pct) {
+  # Run 10000 trials on the distribution 
+  t_test_p_values2 <- replicate(1000, select_n(pct))
+
+  return(length(which(t_test_p_values2 < 0.05))/length(t_test_p_values2))
+}
+
+# numeric vector of length equal to your number of RI permutations
+percentages_to_sample <- seq(0.1, 2.0, by = 0.1)
+power <- lapply(percentages_to_sample, sim_n)
+```
+
+**Once we get above 60% of our original study size, we can see that we find p-values < 0.05 96% of the time. Selected with replacement may be skewing our results slightly but we can't select without repleacement when we are looking at more samples than the original study contains.**
+
+```{r}
+powersdt <- data.table(powers = power, pcts = percentages_to_sample)
+ggplot(powersdt, aes(pcts, powers)) + geom_bar(stat="identity")
 ```
